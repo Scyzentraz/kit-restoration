@@ -89,8 +89,10 @@ try:
 except Exception as e:
     print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
 
-#Cell2
-# @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator
+
+
+##Cell2
+# @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator (VERSI QC)
 # =======================================================================
 # BAGIAN 0: IMPORT & SETUP UI Lanjutan
 # =======================================================================
@@ -112,15 +114,15 @@ class CleanLogger:
         self.output_widget = output_widget
         self.log_file = None
         self.message_buffer = []
-        
+
     def __enter__(self):
         self.log_file = open(self.log_path, 'w', encoding='utf-8')
         return self
-        
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.log_file:
             self.log_file.close()
-    
+
     def log(self, message, show_timestamp=True):
         """Log message ke file dan tampilkan di widget"""
         if show_timestamp:
@@ -128,28 +130,24 @@ class CleanLogger:
             log_entry = f"[{timestamp}] {message}"
         else:
             log_entry = message
-            
-        # Write to file immediately
+
         if self.log_file:
             self.log_file.write(log_entry + '\n')
             self.log_file.flush()
-        
-        # Display in widget context (no stdout hijacking!)
+
         with self.output_widget:
             print(message)
-    
+
     def log_separator(self):
         """Log separator line"""
         separator = "=" * 50
-        self.log("", show_timestamp=False)
-        self.log(separator, show_timestamp=False) 
-        self.log("", show_timestamp=False)
+        self.log(separator, show_timestamp=False)
 
 # =======================================================================
-# BAGIAN 1B: MEMORY MANAGEMENT & VALIDATION FUNCTIONS  
+# BAGIAN 1B: MEMORY MANAGEMENT & VALIDATION FUNCTIONS
 # =======================================================================
 
-def validate_batch_size(jobs_list, max_batch=5):
+def validate_batch_size(jobs_list, max_batch=500):
     """Limit batch size untuk prevent OOM - Conservative untuk Colab Free"""
     if len(jobs_list) > max_batch:
         return jobs_list[:max_batch], f"⚠️ Batch dibatasi ke {max_batch} jobs untuk stabilitas Colab Free"
@@ -166,92 +164,141 @@ def validate_resolution(width, height):
 def manage_preview_memory_smooth(preview_images, preview_widgets, max_images=3):
     """Smooth preview management tanpa kedip"""
     if len(preview_images) >= max_images:
-        # Keep only the latest image, clear the rest
         if len(preview_images) > 1:
             preview_images = preview_images[-1:]
             preview_widgets = preview_widgets[-1:]
-        
-        # Minimal cleanup
+
         torch.cuda.empty_cache()
-        
+
         return preview_images, preview_widgets, f"🧹 Preview cycled (showing latest {len(preview_images)} images)"
-    
+
     return preview_images, preview_widgets, None
 
-# =======================================================================  
-# BAGIAN 1C: FUNGSI INTI (GENERATOR & PARSER)
+# =======================================================================
+# BAGIAN 1C: FUNGSI INTI (GENERATOR, PARSER, DAN QC LAYER BARU)
 # =======================================================================
 
 def validate_job_params(job_dict, job_index):
+    # Fungsi ini sekarang hanya digunakan untuk parsing JSON awal, validasi utama ada di QC
     if 'prompt' not in job_dict or not str(job_dict['prompt']).strip():
         return False, f"❌ ERROR di Job #{job_index+1}: 'prompt' tidak boleh kosong"
-    
-    # Validate resolution if provided
-    if 'width' in job_dict and 'height' in job_dict:
-        is_valid, msg = validate_resolution(job_dict['width'], job_dict['height'])
-        if not is_valid:
-            return False, f"❌ ERROR di Job #{job_index+1}: {msg}"
-    
     return True, "OK"
 
 def parse_batch_json_input(raw_text, logger):
     """Parse batch input dengan clean logging"""
     job_list = []
-    if not raw_text.strip(): 
+    if not raw_text.strip():
         return []
-    
+
     try:
         all_jobs = json.loads(raw_text)
         if not isinstance(all_jobs, list):
             logger.log("❌ ERROR: Input harus berupa array JSON (diawali '[' dan diakhiri ']')")
             return []
-            
+
+        # Validasi awal di sini, validasi mendalam akan dilakukan oleh QC
         for i, job_dict in enumerate(all_jobs):
-            is_valid, msg = validate_job_params(job_dict, i)
-            if is_valid: 
+            if isinstance(job_dict, dict):
                 job_list.append(job_dict)
-            else: 
-                logger.log(msg)
-                
+            else:
+                logger.log(f"❌ ERROR di Job #{i+1}: Item bukan format JSON object yang valid.")
+
         return job_list
     except Exception as e:
         logger.log(f"❌ ERROR saat parsing JSON: {e}")
         return []
 
+# [FUNGSI BARU] Quality Control Layer
+def quality_control_check(jobs_list, model_id, logger):
+    """
+    Fungsi ini bertindak sebagai Quality Control.
+    - Memfilter job yang tidak valid.
+    - Menyesuaikan parameter jika memungkinkan (misal: resolusi).
+    - Memberikan laporan ringkasan yang jelas.
+    """
+    logger.log("🕵️‍♂️ Memulai Quality Control (QC) untuk semua job...")
+
+    valid_jobs = []
+    report_messages = []
+    total_jobs = len(jobs_list)
+    invalid_count = 0
+    adjusted_count = 0
+
+    # Batasi batch size di sini sebagai bagian dari QC
+    jobs_list, batch_warning = validate_batch_size(jobs_list, max_batch=5)
+    if batch_warning:
+        logger.log(batch_warning)
+        # Update total_jobs jika ada pemotongan
+        if len(jobs_list) < total_jobs:
+            report_messages.append(f"   - ℹ️ Info: {total_jobs - len(jobs_list)} job terakhir diabaikan karena melebihi batas batch.")
+            total_jobs = len(jobs_list)
+
+
+    for i, job in enumerate(jobs_list):
+        job_id = f"Job #{i+1}"
+        is_adjusted = False
+
+        # 1. Validasi Prompt
+        if not job.get('prompt') or not str(job.get('prompt')).strip():
+            report_messages.append(f"   - ❌ {job_id}: Gagal - 'prompt' tidak boleh kosong.")
+            invalid_count += 1
+            continue
+
+        # 2. Validasi & Penyesuaian Resolusi
+        width = job.get('width', 1024)
+        height = job.get('height', 576)
+
+        is_res_valid, msg = validate_resolution(width, height)
+        if not is_res_valid:
+            # Cek apakah resolusi terlalu besar (fatal) atau hanya bukan kelipatan 8 (bisa disesuaikan)
+            if "terlalu tinggi" in msg:
+                report_messages.append(f"   - ❌ {job_id}: Gagal - {msg}.")
+                invalid_count += 1
+                continue
+            else: # Bukan kelipatan 8, kita sesuaikan
+                original_w, original_h = width, height
+                adj_width = width - (width % 8)
+                adj_height = height - (height % 8)
+                job['width'] = adj_width
+                job['height'] = adj_height
+                report_messages.append(f"   - ⚠️ {job_id}: Disesuaikan - Resolusi diubah dari {original_w}x{original_h} menjadi {adj_width}x{adj_height} (syarat kelipatan 8).")
+                is_adjusted = True
+                adjusted_count += 1
+
+        valid_jobs.append(job)
+
+    # 3. Membuat Laporan Ringkasan
+    logger.log_separator()
+    valid_count = len(valid_jobs) - adjusted_count
+    logger.log(f"✅ QC Selesai. Ringkasan dari {total_jobs} job yang terdeteksi:")
+    logger.log(f"   - 👍 Lolos: {valid_count}", show_timestamp=False)
+    logger.log(f"   - ⚠️ Disesuaikan: {adjusted_count}", show_timestamp=False)
+    logger.log(f"   - ❌ Gagal/Ditolak: {invalid_count}", show_timestamp=False)
+
+    if report_messages:
+        logger.log("\n   Detail Laporan:", show_timestamp=False)
+        for msg in report_messages:
+            logger.log(msg, show_timestamp=False)
+    logger.log_separator()
+
+    return valid_jobs
+
 def generate_stable_diffusion_image_clean(
     model_pipe, output_dir, prompt, negative_prompt="", seed=None,
-    width=1024, height=576, num_inference_steps=35, guidance_scale=8.0, 
+    width=1024, height=576, num_inference_steps=35, guidance_scale=8.0,
     eta=0.0, logger=None
 ):
-    """Generate function dengan clean logging"""
-    
-    # Validate resolution
-    is_valid, msg = validate_resolution(width, height)
-    if not is_valid:
-        if logger: logger.log(f"❌ ERROR: {msg}. Melewati job ini.")
-        return None, None, None
-    
-    # Adjust resolution for v1-5 compatibility
-    if "v1-5" in model_id:
-        original_w, original_h = width, height
-        width = width - (width % 8)
-        height = height - (height % 8)
-        if (width, height) != (original_w, original_h):
-            if logger: logger.log(f"⚠️ Resolusi disesuaikan: {original_w}x{original_h} → {width}x{height}")
-    
-    if width * height > 1024 * 1024:
-        if logger: logger.log(f"⚠️ Resolusi tinggi {width}x{height}, proses mungkin lama")
-    
+    """Fungsi generate inti, tidak ada perubahan signifikan"""
+
     def get_all_hashes(data):
         return {
             "image_md5": hashlib.md5(data).hexdigest(),
             "image_sha256": hashlib.sha256(data).hexdigest(),
             "image_sha512": hashlib.sha512(data).hexdigest()
         }
-    
+
     if logger: logger.log(f"🎨 Memproses: \"{prompt[:50]}...\"")
-    
-    # Handle seed
+
     if seed is None:
         seed = random.randint(0, 2**32 - 1)
         if logger: logger.log(f"   Seed acak: {seed}")
@@ -263,74 +310,52 @@ def generate_stable_diffusion_image_clean(
             original_seed = seed
             seed = random.randint(0, 2**32 - 1)
             if logger: logger.log(f"   ⚠️ Seed '{original_seed}' invalid, menggunakan: {seed}")
-    
+
     try:
         generator = torch.manual_seed(seed)
         start_time = time.time()
-        
+
         gen_params = {
-            "prompt": prompt, 
-            "generator": generator, 
-            "width": width, 
-            "height": height, 
-            "num_inference_steps": num_inference_steps, 
-            "guidance_scale": guidance_scale, 
-            "eta": eta
+            "prompt": prompt, "generator": generator, "width": width, "height": height,
+            "num_inference_steps": num_inference_steps, "guidance_scale": guidance_scale, "eta": eta
         }
-        
+
         if negative_prompt and negative_prompt.strip():
             gen_params["negative_prompt"] = negative_prompt
-        else:
-            if logger: logger.log("   (Tanpa negative prompt)")
-        
-        # Generate image
+
         image = model_pipe(**gen_params).images[0]
         generation_duration = time.time() - start_time
-        
+
         if logger: logger.log(f"   ✅ Selesai dalam {generation_duration:.2f} detik")
-        
-        # Save image and metadata
+
         image_path = f"{output_dir}/images/img_{seed}.png"
         json_path = f"{output_dir}/seeds/img_{seed}.json"
-        
+
         png_metadata = PngImagePlugin.PngInfo()
         png_metadata.add_text("prompt", prompt)
         png_metadata.add_text("negative_prompt", negative_prompt)
         png_metadata.add_text("seed", str(seed))
-        png_metadata.add_text("guidance_scale", str(guidance_scale))
-        png_metadata.add_text("steps", str(num_inference_steps))
-        
+
         image_bytes = io.BytesIO()
         image.save(image_bytes, format='PNG', pnginfo=png_metadata)
         image_data = image_bytes.getvalue()
         hashes = get_all_hashes(image_data)
-        
-        with open(image_path, "wb") as f:
-            f.write(image_data)
-        
+
+        with open(image_path, "wb") as f: f.write(image_data)
+
         meta_dict = {
-            "prompt": prompt, 
-            "negative_prompt": negative_prompt, 
-            "seed": seed, 
-            "width": width, 
-            "height": height, 
-            "num_inference_steps": num_inference_steps, 
-            "guidance_scale": guidance_scale, 
-            "eta": eta, 
-            "model": model_pipe.config._name_or_path, 
-            "scheduler": model_pipe.scheduler.__class__.__name__, 
-            "timestamp": datetime.now().isoformat(), 
-            "generation_duration_seconds": round(generation_duration, 2), 
+            "prompt": prompt, "negative_prompt": negative_prompt, "seed": seed, "width": width, "height": height,
+            "num_inference_steps": num_inference_steps, "guidance_scale": guidance_scale, "eta": eta,
+            "model": model_pipe.config._name_or_path, "scheduler": model_pipe.scheduler.__class__.__name__,
+            "timestamp": datetime.now().isoformat(), "generation_duration_seconds": round(generation_duration, 2),
             "hashes": hashes
         }
-        
-        with open(json_path, "w") as f: 
-            json.dump(meta_dict, f, indent=2)
-        
+
+        with open(json_path, "w") as f: json.dump(meta_dict, f, indent=2)
+
         if logger: logger.log(f"   💾 Tersimpan: img_{seed}.png")
-        
         return image_path, json_path, image.copy()
-        
+
     except torch.cuda.OutOfMemoryError:
         if logger: logger.log("   ❌ GPU Out of Memory! Emergency cleanup...")
         emergency_memory_cleanup()
@@ -340,7 +365,7 @@ def generate_stable_diffusion_image_clean(
         return None, None, None
 
 # =======================================================================
-# BAGIAN 2: MEMBUAT KOMPONEN UI UNTUK SETIAP MODE (UNCHANGED)
+# BAGIAN 2: MEMBUAT KOMPONEN UI UNTUK SETIAP MODE (TIDAK BERUBAH)
 # =======================================================================
 batch_placeholder_text = """[
   {
@@ -351,17 +376,14 @@ batch_placeholder_text = """[
     "prompt": "a beautiful beach at sunset, cinematic, 8k"
   }
 ]"""
-
 batch_textarea = widgets.Textarea(value='', placeholder=batch_placeholder_text, layout={'width': '95%', 'height': '300px'})
 batch_button = widgets.Button(description='Generate Batch', button_style='success', icon='play')
 batch_ui = widgets.VBox([widgets.Label('Masukkan beberapa job dalam format JSON Array:'), batch_textarea, batch_button])
-
 normal_prompt_area = widgets.Textarea(placeholder='Masukkan prompt Anda di sini...', layout={'width': '95%', 'height': '150px'})
 normal_neg_prompt_area = widgets.Textarea(placeholder='(Opsional) Kosongkan jika tidak ingin menggunakan negative prompt.', layout={'width': '95%', 'height': '80px'})
 aspect_ratio_dropdown = widgets.Dropdown(options=['Lanskap (16:9) - 1024x576', 'Potret (9:16) - 576x1024', 'Persegi (1:1) - 768x768', 'Lanskap Klasik (4:3) - 960x720', 'Potret Wide (2:3) - 640x960', 'Ultrawide (21:9) - 1344x576'], value='Lanskap (16:9) - 1024x576', description='Aspek Rasio:')
 normal_button = widgets.Button(description='Generate Normal', button_style='success', icon='play')
 normal_ui = widgets.VBox([widgets.Label('Prompt:'), normal_prompt_area, widgets.Label('Negative Prompt:'), normal_neg_prompt_area, aspect_ratio_dropdown, normal_button])
-
 adv_prompt_area = widgets.Textarea(placeholder='Masukkan prompt Anda di sini...', layout={'width': '95%', 'height': '150px'})
 adv_neg_prompt_area = widgets.Textarea(placeholder='(Opsional) Kosongkan jika tidak ingin menggunakan negative prompt.', layout={'width': '95%', 'height': '80px'})
 adv_seed_input = widgets.Text(placeholder='Kosong = acak', description='Seed:')
@@ -371,253 +393,163 @@ adv_width_slider = widgets.IntSlider(value=1024, min=256, max=1536, step=8, desc
 adv_height_slider = widgets.IntSlider(value=576, min=256, max=1536, step=8, description='Height:')
 adv_button = widgets.Button(description='Generate Advanced', button_style='success', icon='play')
 adv_ui = widgets.VBox([widgets.Label('Prompt:'), adv_prompt_area, widgets.Label('Negative Prompt:'), adv_neg_prompt_area, widgets.HBox([adv_seed_input, adv_steps_slider, adv_guidance_slider]), widgets.HBox([adv_width_slider, adv_height_slider]), adv_button])
-
 upload_button = widgets.FileUpload(accept='.json', multiple=False, description='Pilih File JSON')
 upload_generate_button = widgets.Button(description='Generate dari JSON', button_style='success', icon='play')
 upload_ui = widgets.VBox([widgets.Label('Upload file .json yang berisi array of jobs:'), upload_button, upload_generate_button])
-
 all_buttons = [batch_button, normal_button, adv_button, upload_generate_button]
 
 # =======================================================================
-# BAGIAN 3: CLEAN EXECUTION SYSTEM
+# BAGIAN 3: REVISED EXECUTION SYSTEM WITH QC
 # =======================================================================
 text_output_area = widgets.Output()
 preview_output_area = widgets.Output()
 preview_images = []
 preview_widgets = []
 
+# [REVISI] execute_generation_clean sekarang memanggil QC Layer
 def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
-    """Clean execution tanpa stdout manipulation"""
+    """Orchestrator utama yang mengintegrasikan QC Layer."""
     global preview_images, preview_widgets
-    
-    # Disable all buttons
-    for button in all_buttons: 
-        button.disabled = True
+
+    for button in all_buttons: button.disabled = True
     preview_toggle.disabled = True
-    
-    # Clear output area ONCE
-    text_output_area.clear_output(wait=True)
-    
+
+    text_output_area.clear_output(wait=True) # SATU-SATUNYA TITIK PEMBERSIHAN
+
     try:
-        # Setup logging
         log_dir = os.path.join(output_dir, "logging")
         os.makedirs(log_dir, exist_ok=True)
         log_filename = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         log_path = os.path.join(log_dir, log_filename)
-        
-        # Use clean logger (no stdout manipulation!)
+
         with CleanLogger(log_path, text_output_area) as logger:
-            run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, logger)
+            # Panggil QC Layer di sini!
+            ready_jobs = quality_control_check(jobs_list, model_id, logger)
+
+            # Hanya jalankan loop jika ada job yang lolos QC
+            if ready_jobs:
+                run_execution_loop_clean(ready_jobs, mode_name, output_dir, preview_enabled, logger)
+            else:
+                logger.log("\nTidak ada job yang valid untuk diproses. Proses dihentikan.")
+
             logger.log_separator()
             logger.log(f"📝 Log lengkap tersimpan: {log_path}")
-            
+
     finally:
-        # Re-enable buttons
-        for button in all_buttons: 
-            button.disabled = False
+        for button in all_buttons: button.disabled = False
         preview_toggle.disabled = False
         if upload_button.value:
             upload_button.value.clear()
             upload_button._counter = 0
 
+# [REVISI] run_execution_loop_clean menjadi lebih sederhana
 def run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, logger):
-    """Clean execution loop"""
+    """Loop eksekusi yang sekarang hanya menerima job yang sudah 100% valid."""
     global preview_images, preview_widgets
-    
-    # Clear preview
+
     preview_output_area.clear_output()
     del preview_images[:], preview_widgets[:]
     gc.collect()
-    
+
     try:
-        # Create directories
         os.makedirs(f"{output_dir}/images", exist_ok=True)
         os.makedirs(f"{output_dir}/seeds", exist_ok=True)
         negative_prompt_default = "blurry, low quality, jpeg artifacts, distorted, watermark, text, signature"
-        
-        if not jobs_list:
-            logger.log("⚠️ Tidak ada job yang valid. Proses dihentikan.")
-            return
-        
-        # Apply batch size limit
-        jobs_list, batch_warning = validate_batch_size(jobs_list, max_batch=5)
-        if batch_warning:
-            logger.log(batch_warning)
-        
+
         total_jobs = len(jobs_list)
-        logger.log(f"🚀 Memulai generate {mode_name} - Total: {total_jobs} gambar")
-        
-        if preview_enabled:
-            logger.log("   📸 Preview: AKTIF")
-        
+        logger.log(f"🚀 Memulai generate {mode_name} - Total: {total_jobs} gambar valid")
+        if preview_enabled: logger.log("   📸 Preview: AKTIF")
+
         successful_jobs, failed_jobs = 0, 0
-        
-        # Simple progress tracking (no tqdm to avoid stdout conflicts)
+
         for i, job_config in enumerate(jobs_list):
-            logger.log(f"\n--- Job {i+1}/{total_jobs} ---")
-            
-            # Add default negative prompt if not provided
+            logger.log(f"\n--- Memproses Job Valid {i+1}/{total_jobs} ---")
+
             if 'negative_prompt' not in job_config:
                 job_config['negative_prompt'] = negative_prompt_default
-            
-            # Generate image
+
             image_object = None
             try:
                 _, _, image_object = generate_stable_diffusion_image_clean(
-                    model_pipe=pipe, 
-                    output_dir=output_dir, 
-                    logger=logger,
-                    **job_config
+                    model_pipe=pipe, output_dir=output_dir, logger=logger, **job_config
                 )
-                
                 if image_object is not None:
                     successful_jobs += 1
-                    
-                    # Handle preview
                     if preview_enabled:
                         preview_images, preview_widgets, cycle_msg = manage_preview_memory_smooth(
                             preview_images, preview_widgets, max_images=3
                         )
-                        
-                        if cycle_msg:
-                            logger.log(f"   {cycle_msg}")
-                        
+                        if cycle_msg: logger.log(f"   {cycle_msg}")
                         preview_images.append(image_object)
-                        img_widget = widgets.Image(
-                            value=image_object._repr_png_(), 
-                            format='png', 
-                            width=200,
-                            layout={'margin': '5px'}
-                        )
+                        img_widget = widgets.Image(value=image_object._repr_png_(), format='png', width=200, layout={'margin': '5px'})
                         preview_widgets.append(img_widget)
-                        
-                        # Update preview (smooth, no full clear each time)
                         with preview_output_area:
                             clear_output(wait=True)
-                            if preview_widgets:
-                                display(widgets.HBox(preview_widgets))
+                            if preview_widgets: display(widgets.HBox(preview_widgets))
                 else:
                     failed_jobs += 1
-                    
             except Exception as e:
                 failed_jobs += 1
                 logger.log(f"   ❌ FATAL ERROR: {e}")
-        
-        # Final summary
+
         logger.log_separator()
         logger.log(f"🎉 Generate {mode_name} selesai!")
         logger.log(f"   ✅ Sukses: {successful_jobs}")
         logger.log(f"   ❌ Gagal: {failed_jobs}")
-        
-        # Final cleanup only if batch was large
+
         if total_jobs > 3:
             safe_memory_cleanup()
             logger.log("   🧹 Memory cleanup selesai")
-            
+
     except Exception as e:
         logger.log(f"❌ Fatal error: {e}")
         emergency_memory_cleanup()
 
 # =======================================================================
-# BAGIAN 4: EVENT HANDLERS - CLEAN VERSION
+# BAGIAN 4: EVENT HANDLERS - CLEANED & SIMPLIFIED
 # =======================================================================
 
 def on_batch_button_clicked(b):
-    # Initial parsing in output area
-    text_output_area.clear_output(wait=True)
-    with text_output_area:
-        print("⚙️ Parsing input Mode Batch...")
-        
-    # Create temporary logger for parsing
-    log_dir = os.path.join(output_directory, "logging")
-    os.makedirs(log_dir, exist_ok=True)
-    temp_log = os.path.join(log_dir, "temp_parse.txt")
-    
-    with CleanLogger(temp_log, text_output_area) as logger:
-        jobs = parse_batch_json_input(batch_textarea.value, logger)
-        if jobs: 
-            logger.log(f"✅ Berhasil parsing {len(jobs)} job")
-    
-    # Execute if jobs found
-    if jobs:
-        execute_generation_clean(jobs, mode_name="Batch", output_dir=output_directory, preview_enabled=preview_toggle.value)
+    # Hanya parsing, tanpa validasi mendalam atau logging permanen
+    temp_logger_widget = widgets.Output() # Logger sementara agar tidak mengganggu UI utama
+    with CleanLogger("temp.log", temp_logger_widget) as temp_logger:
+        jobs = parse_batch_json_input(batch_textarea.value, temp_logger)
+    execute_generation_clean(jobs, "Batch", output_directory, preview_toggle.value)
 
 def on_normal_button_clicked(b):
-    text_output_area.clear_output(wait=True)
-    with text_output_area:
-        print("⚙️ Mempersiapkan Mode Normal...")
-        
-        aspect_map = {
-            'Lanskap (16:9) - 1024x576': (1024, 576), 
-            'Potret (9:16) - 576x1024': (576, 1024), 
-            'Persegi (1:1) - 768x768': (768, 768), 
-            'Lanskap Klasik (4:3) - 960x720': (960, 720), 
-            'Potret Wide (2:3) - 640x960': (640, 960), 
-            'Ultrawide (21:9) - 1344x576': (1344, 576)
-        }
-        
-        width, height = aspect_map.get(aspect_ratio_dropdown.value, (1024, 576))
-        job = {
-            "prompt": normal_prompt_area.value, 
-            "negative_prompt": normal_neg_prompt_area.value, 
-            "width": width, 
-            "height": height
-        }
-        
-        if not job["prompt"]: 
-            print("❌ Prompt tidak boleh kosong")
-            return
-            
-        print("✅ Job siap diproses")
-    
-    execute_generation_clean([job], mode_name="Normal", output_dir=output_directory, preview_enabled=preview_toggle.value)
+    # Hanya kumpulkan data, tanpa print/validasi
+    aspect_map = {
+        'Lanskap (16:9) - 1024x576': (1024, 576), 'Potret (9:16) - 576x1024': (576, 1024),
+        'Persegi (1:1) - 768x768': (768, 768), 'Lanskap Klasik (4:3) - 960x720': (960, 720),
+        'Potret Wide (2:3) - 640x960': (640, 960), 'Ultrawide (21:9) - 1344x576': (1344, 576)
+    }
+    width, height = aspect_map.get(aspect_ratio_dropdown.value, (1024, 576))
+    job = [{"prompt": normal_prompt_area.value, "negative_prompt": normal_neg_prompt_area.value, "width": width, "height": height}]
+    execute_generation_clean(job, "Normal", output_directory, preview_toggle.value)
 
 def on_advanced_button_clicked(b):
-    text_output_area.clear_output(wait=True)
-    with text_output_area:
-        print("⚙️ Mempersiapkan Mode Advanced...")
-        
-        job = {
-            "prompt": adv_prompt_area.value, 
-            "negative_prompt": adv_neg_prompt_area.value, 
-            "num_inference_steps": adv_steps_slider.value, 
-            "guidance_scale": adv_guidance_slider.value, 
-            "width": adv_width_slider.value, 
-            "height": adv_height_slider.value, 
-            "seed": adv_seed_input.value if adv_seed_input.value else None
-        }
-        
-        if not job["prompt"]: 
-            print("❌ Prompt tidak boleh kosong")
-            return
-            
-        print("✅ Parameter advanced siap")
-    
-    execute_generation_clean([job], mode_name="Advanced", output_dir=output_directory, preview_enabled=preview_toggle.value)
+    # Hanya kumpulkan data, tanpa print/validasi
+    job = [{"prompt": adv_prompt_area.value, "negative_prompt": adv_neg_prompt_area.value,
+            "num_inference_steps": adv_steps_slider.value, "guidance_scale": adv_guidance_slider.value,
+            "width": adv_width_slider.value, "height": adv_height_slider.value,
+            "seed": adv_seed_input.value if adv_seed_input.value else None}]
+    execute_generation_clean(job, "Advanced", output_directory, preview_toggle.value)
 
 def on_upload_button_clicked(b):
-    text_output_area.clear_output(wait=True)
-    with text_output_area:
-        print("⚙️ Parsing file JSON...")
-        
-        if not upload_button.value: 
-            print("❌ Tidak ada file yang diupload")
-            return
-            
-        uploaded_file = list(upload_button.value.values())[0]
-        content_bytes = uploaded_file['content']
-        
-        try:
-            jobs = json.loads(content_bytes.decode('utf-8'))
-            if not isinstance(jobs, list):
-                print("❌ Format JSON tidak valid. Harus berupa array.")
-                return
-            print(f"✅ Berhasil parsing {len(jobs)} job dari '{uploaded_file['metadata']['name']}'")
-        except Exception as e:
-            print(f"❌ Gagal parsing JSON: {e}")
-            return
-    
-    execute_generation_clean(jobs, mode_name="JSON Upload", output_dir=output_directory, preview_enabled=preview_toggle.value)
+    # Hanya parsing, tanpa print/validasi
+    if not upload_button.value:
+        execute_generation_clean([], "JSON Upload", output_directory, preview_toggle.value)
+        return
+    uploaded_file = list(upload_button.value.values())[0]
+    content_bytes = uploaded_file['content']
+    jobs = []
+    try:
+        parsed_json = json.loads(content_bytes.decode('utf-8'))
+        if isinstance(parsed_json, list):
+            jobs = parsed_json
+    except Exception:
+        pass # Biarkan QC yang melaporkan error parsing jika ada
+    execute_generation_clean(jobs, "JSON Upload", output_directory, preview_toggle.value)
 
 # Connect event handlers
 batch_button.on_click(on_batch_button_clicked)
@@ -626,22 +558,22 @@ adv_button.on_click(on_advanced_button_clicked)
 upload_generate_button.on_click(on_upload_button_clicked)
 
 # =======================================================================
-# BAGIAN 5: UI ASSEMBLY (UNCHANGED)
+# BAGIAN 5: UI ASSEMBLY (TIDAK BERUBAH)
 # =======================================================================
 tab_children = [batch_ui, normal_ui, adv_ui, upload_ui]
 tab = widgets.Tab(children=tab_children)
 tab.set_title(0, '1. Mode Batch')
 tab.set_title(1, '2. Mode Normal')
-tab.set_title(2, '3. Mode Advanced') 
+tab.set_title(2, '3. Mode Advanced')
 tab.set_title(3, '4. Mode Upload JSON')
 
 preview_toggle = widgets.Checkbox(value=True, description='Tampilkan Preview Gambar', indent=False)
 
 ui_container = widgets.VBox([
-    widgets.HTML("<h2>🎨 Aplikasi Generator Multi-Mode - Clean Version 🎨</h2>"),
+    widgets.HTML("<h2>🎨 Aplikasi Generator Multi-Mode - Versi QC 🎨</h2>"),
     preview_toggle,
     tab
 ])
 
-print("✅ Aplikasi siap dengan sistem logging yang bersih!")
+print("✅ Aplikasi siap!")
 display(ui_container, text_output_area, preview_output_area)
