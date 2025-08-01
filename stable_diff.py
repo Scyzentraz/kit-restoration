@@ -89,8 +89,7 @@ try:
 except Exception as e:
     print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
 
-
-##Cell2
+#Cell2
 # @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator
 # =======================================================================
 # BAGIAN 0: IMPORT & SETUP UI Lanjutan
