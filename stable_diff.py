@@ -1,3 +1,4 @@
+eksperimental
 
 ##Cell1
 # @title ⬅️ Jalankan Cell Ini Dulu Untuk Setup
@@ -21,6 +22,10 @@ from PIL import Image, PngImagePlugin
 from google.colab import drive
 from datetime import datetime
 from tqdm.notebook import tqdm
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import sys
+from contextlib import contextmanager
 
 # [MODIFIKASI #10] Ganti path hardcoded dengan form Colab
 # Pengguna bisa mengubah path ini sebelum menjalankan cell.
@@ -32,108 +37,74 @@ drive.mount('/content/drive')
 # Langkah 4: Konfigurasi dan load model
 model_id = "runwayml/stable-diffusion-v1-5"
 
+# =======================================================================
+# MEMORY OPTIMIZATION FUNCTIONS
+# =======================================================================
+
+def safe_memory_cleanup():
+    """Cleanup memory tanpa menghapus model dari GPU"""
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        cached = torch.cuda.memory_reserved() / 1024**3      # GB
+        print(f"   🧠 GPU Memory - Allocated: {allocated:.2f}GB, Cached: {cached:.2f}GB")
+
+def setup_memory_efficient_pipeline(pipe):
+    """Setup pipeline untuk memory efficiency"""
+    try:
+        pipe.enable_attention_slicing()
+        print("   ✅ Attention slicing enabled")
+    except:
+        print("   ⚠️ Attention slicing not available")
+
+    try:
+        pipe.enable_memory_efficient_attention()
+        print("   ✅ Memory efficient attention enabled")
+    except:
+        print("   ⚠️ Memory efficient attention not available")
+
+    return pipe
+
+def emergency_memory_cleanup():
+    """Emergency cleanup jika terjadi OOM error"""
+    print("   🚨 Emergency memory cleanup...")
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    # Force multiple garbage collections
+    for _ in range(3):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    print("   ✅ Emergency cleanup completed")
+
 # Load pipeline dan pindahkan ke GPU
 try:
-    pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
+    # Ganti bagian load model dengan:
+    pipe = StableDiffusionPipeline.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,  # FP16 untuk hemat VRAM
+        safety_checker=None,        # Nonaktifkan safety checker
+        use_safetensors=True       # Format file lebih efisien
+    ).to("cuda")
+
+# Optimasi dasar saja
+    pipe.enable_attention_slicing()
     # Ganti scheduler ke DDIM untuk potensi hasil yang lebih baik/cepat
     pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+    # Apply memory optimizations
+    pipe = setup_memory_efficient_pipeline(pipe)
+
     print(f"✅ Setup selesai. Model '{model_id}' siap digunakan.")
     print(f"🖼️ Hasil akan disimpan di: {output_directory}")
+    print("🧠 Memory optimization applied")
 except Exception as e:
     print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
 
 
-##Cell2
-# @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator
-# =======================================================================
-# BAGIAN 0: IMPORT & SETUP UI Lanjutan
-# =======================================================================
-import ipywidgets as widgets
-from IPython.display import display, clear_output
-import sys
-from contextlib import contextmanager
-
-# =======================================================================
-# BAGIAN 1A: KELAS DAN FUNGSI HELPER UNTUK LOGGING REAL-TIME
-# =======================================================================
-
-class Tee:
-    """Objek helper yang membagi output (seperti pipa 'T') ke beberapa tujuan."""
-    def __init__(self, stream1, stream2):
-        self.stream1 = stream1
-        self.stream2 = stream2
-
-    def write(self, text):
-        self.stream1.write(text)
-        self.stream2.write(text)
-
-    def flush(self):
-        self.stream1.flush()
-        self.stream2.flush()
-
-@contextmanager
-def real_time_logger(log_path):
-    """Context manager untuk mengarahkan stdout ke layar dan file secara bersamaan."""
-    original_stdout = sys.stdout
-    try:
-        with open(log_path, 'w', encoding='utf-8') as log_file:
-            tee = Tee(original_stdout, log_file)
-            sys.stdout = tee
-            yield
-    finally:
-        sys.stdout = original_stdout
-
-
-# =======================================================================
-# BAGIAN 1B: FUNGSI INTI (GENERATOR & PARSER)
-# =======================================================================
-
-def validate_job_params(job_dict, job_index):
-    if 'prompt' not in job_dict or not str(job_dict['prompt']).strip():
-        return False, f"❌ ERROR di Job Batch #{job_index+1}: 'prompt' tidak boleh kosong."
-    return True, "OK"
-
-def parse_batch_json_input(raw_text):
-    job_list = []
-    if not raw_text.strip(): return []
-    try:
-        all_jobs = json.loads(raw_text)
-        if not isinstance(all_jobs, list):
-            print("   > ❌ ERROR: Input harus berupa array JSON (diawali dengan '[' dan diakhiri dengan ']').")
-            return []
-        for i, job_dict in enumerate(all_jobs):
-            is_valid, msg = validate_job_params(job_dict, i)
-            if is_valid: job_list.append(job_dict)
-            else: print(f"   > {msg}")
-        return job_list
-    except Exception as e:
-        print(f"   > ❌ ERROR saat mem-parse JSON: {e}")
-        return []
-
-def generate_stable_diffusion_image(
-    model_pipe, output_dir, prompt, negative_prompt="", seed=None,
-    width=1024, height=576, num_inference_steps=35, guidance_scale=8.0, eta=0.0
-):
-    """Fungsi utama untuk generate, menyimpan, dan mencatat metadata gambar."""
-    if "v1-5" in model_id:
-        original_w, original_h = width, height
-        width = width - (width % 8)
-        height = height - (height % 8)
-        if (width, height) != (original_w, original_h):
-            print(f"   ⚠️ PERINGATAN: Resolusi {original_w}x{original_h} disesuaikan menjadi {width}x{height} agar kompatibel (kelipatan 8).")
-
-    if width * height > 1024 * 1024:
-        print(f"   ⚠️ PERINGATAN: Resolusi {width}x{height} cukup tinggi. Proses mungkin memakan waktu lebih lama.")
-
-    # [PERBAIKAN #2] Mengembalikan fungsi hash ke bentuk semula, termasuk sha512.
-    def get_all_hashes(data):
-        return {
-            "image_md5": hashlib.md5(data).hexdigest(),
-            "image_sha256": hashlib.sha256(data).hexdigest(),
-            "image_sha512": hashlib.sha512(data).hexdigest()
-        }
-
-    print(f"🎨 Memproses prompt: \"{prompt[:60]}...\"")
 
     if seed is None:
         seed = random.randint(0, 2**32 - 1)
