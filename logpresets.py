@@ -20,8 +20,8 @@ class PresetManager:
     def apply(self, tag, message, output_widget):
     tag = tag.lower()
     style = self.presets.get(tag)
-    if not style:
-        return False
+        if not style:
+            return False
 
     color = style.get("color", "black")
     weight = style.get("font-weight", "normal")
