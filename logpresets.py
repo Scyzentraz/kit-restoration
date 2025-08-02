@@ -13,7 +13,7 @@ class PresetManager:
         try:
             with open(yaml_path, "r") as f:
                 self.presets = yaml.safe_load(f)
-            except Exception as e:
+        except Exception as e:
                 print(f"[LOG PRESET ERROR]: Gagal                       load preset - {e}")
                 self.presets = {}
 
