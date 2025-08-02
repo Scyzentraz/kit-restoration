@@ -332,7 +332,6 @@ all_buttons = [batch_button, normal_button, adv_button, upload_generate_button]
 # =======================================================================
 text_output_area = widgets.Output()
 preview_output_area = widgets.Output()
-preview_images = []
 preview_widgets = []
 
 preset_admin = PresetManager("preset_styles.yaml")
@@ -340,7 +339,7 @@ preset_admin = PresetManager("preset_styles.yaml")
 # [REVISI] execute_generation_clean sekarang memanggil QC Layer
 def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
     """Orchestrator utama yang mengintegrasikan QC Layer."""
-    global preview_images, preview_widgets
+    global preview_widgets
 
     for button in all_buttons: button.disabled = True
     preview_toggle.disabled = True
