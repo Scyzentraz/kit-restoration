@@ -45,14 +45,113 @@ def reload_logger_modules():
 # =======================================================================
 
 #Dipindahkan ke cleanlogger.py
+class CleanLogger:
+    def __init__(self, log_path, output_widget, preset_manager=None):
+        self.log_path = log_path
+        self.output_widget = output_widget
+        self.preset_manager = preset_manager  # Optional, bisa None
+        self.log_file = None
+        self.message_buffer = [] # Atribut ini ada di kode lama, tapi tidak pernah dipakai. Tetap disertakan untuk konsistensi.
 
+    def __enter__(self):
+        self.log_file = open(self.log_path, 'w', encoding='utf-8')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.log_file:
+            self.log_file.close()
+
+    def log(self, message, show_timestamp=True, custom=None):
+        timestamp = datetime.now().strftime("%H:%M:%S") if show_timestamp else ""
+        log_entry = f"[{timestamp}] {message}" if timestamp else message
+
+        if self.log_file:
+            self.log_file.write(log_entry + '\n')
+            self.log_file.flush()
+
+        # Jika ada custom tag dan preset manager disediakan
+        if custom and self.preset_manager:
+            if self.preset_manager.apply(custom, message, self.output_widget):
+                return  # Sudah ditampilkan oleh preset manager
+
+        # Fallback jika preset tidak tersedia atau tidak ada custom tag
+        with self.output_widget:
+            print(message)
+
+    # DITAMBAHKAN KEMBALI DARI KODE LAMA
+    def log_separator(self):
+        """Log separator line"""
+        separator = "=" * 50
+        # Memanggil metode log yang sudah ada
+        self.log(separator, show_timestamp=False)
 
 # =======================================================================
 # BAGIAN 1.2: LOGGING PRESET MANAGER SYSTEM
 # =======================================================================
 
 #Dipindahkan ke logpresets.py
+import yaml
+from datetime import datetime
+from IPython.display import display
+import ipywidgets as widgets
 
+class PresetManager:
+    def __init__(self, yaml_path=None):
+        self.presets = {}
+        if yaml_path:
+            self.load_presets(yaml_path)
+
+    def load_presets(self, yaml_path):
+        try:
+            with open(yaml_path, "r") as f:
+                self.presets = yaml.safe_load(f)
+        except Exception as e:
+                print(f"[LOG PRESET ERROR]: Gagal                       load preset - {e}")
+                self.presets = {}
+
+    def apply(self, tag, message, output_widget):
+        tag = tag.lower()
+        style = self.presets.get(tag)
+        if not style:
+            return False
+
+        color = style.get("color", "black")
+        weight = style.get("font-weight", "normal")
+        emoji = style.get("emoji", "")
+        prefix = style.get("prefix", "")
+        show_time = style.get("timestamp", True)
+
+        timestamp = f"[{datetime.now().strftime('%H:%M:%S')}]" if show_time else ""
+        final_message = f"{timestamp} {emoji} {prefix} {message}".strip()
+        html_style = f"color:{color}; font-weight:{weight};"
+
+        with output_widget:  # ✅ gunakan konteks output widget
+            display(widgets.HTML(f"<span style='{html_style}'>{final_message}</span>"), display_id=True)
+
+        return True
+
+
+#file yaml
+success:
+  color: "yellow"
+  font-weight: "bold"
+  emoji: "✅"
+  prefix: "[BERHASIL]"
+  timestamp: true
+
+error:
+  color: "red"
+  font-weight: "bold"
+  emoji: "❌"
+  prefix: "[GAGAL]"
+  timestamp: true
+
+info:
+  color: "blue"
+  font-weight: "normal"
+  emoji: "ℹ️"
+  prefix: "[INFO]"
+  timestamp: true
 # =======================================================================
 # BAGIAN 1.2: MEMORY MANAGEMENT & VALIDATION FUNCTIONS
 # =======================================================================
