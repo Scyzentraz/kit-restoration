@@ -1,4 +1,4 @@
-class CleanLogger:
+class Cleanlogger:
     def __init__(self, log_path, output_widget, preset_manager=None):
         self.log_path = log_path
         self.output_widget = output_widget
