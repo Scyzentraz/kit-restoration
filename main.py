@@ -1,96 +1,3 @@
-##Cell1
-# @title ⬅️ Jalankan Cell Ini Dulu Untuk Setup
-# Langkah 1: Install semua kebutuhan
-!pip install diffusers transformers accelerate tqdm
-
-# Langkah 2: Import semua library di satu tempat
-import os
-import torch
-import random
-import json
-import time
-import hashlib
-import diffusers
-import transformers
-import gc
-import io
-from contextlib import redirect_stdout
-from diffusers import StableDiffusionPipeline, DDIMScheduler
-from PIL import Image, PngImagePlugin
-from google.colab import drive
-from datetime import datetime
-from tqdm.notebook import tqdm
-
-# [MODIFIKASI #10] Ganti path hardcoded dengan form Colab
-# Pengguna bisa mengubah path ini sebelum menjalankan cell.
-output_directory = "/content/drive/MyDrive/Stable_diff" #@param {type:"string"}
-
-# Langkah 3: Mount Google Drive
-drive.mount('/content/drive')
-
-# Langkah 4: Konfigurasi dan load model
-model_id = "runwayml/stable-diffusion-v1-5"
-
-# =======================================================================
-# MEMORY OPTIMIZATION FUNCTIONS
-# =======================================================================
-
-def safe_memory_cleanup():
-    """Cleanup memory tanpa menghapus model dari GPU"""
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    if torch.cuda.is_available():
-        allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-        cached = torch.cuda.memory_reserved() / 1024**3      # GB
-        print(f"   🧠 GPU Memory - Allocated: {allocated:.2f}GB, Cached: {cached:.2f}GB")
-
-def setup_memory_efficient_pipeline(pipe):
-    """Setup pipeline untuk memory efficiency"""
-    try:
-        pipe.enable_attention_slicing()
-        print("   ✅ Attention slicing enabled")
-    except:
-        print("   ⚠️ Attention slicing not available")
-
-    try:
-        pipe.enable_memory_efficient_attention()
-        print("   ✅ Memory efficient attention enabled")
-    except:
-        print("   ⚠️ Memory efficient attention not available")
-
-    return pipe
-
-def emergency_memory_cleanup():
-    """Emergency cleanup jika terjadi OOM error"""
-    print("   🚨 Emergency memory cleanup...")
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    # Force multiple garbage collections
-    for _ in range(3):
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    print("   ✅ Emergency cleanup completed")
-
-# Load pipeline dan pindahkan ke GPU
-try:
-    pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
-    # Ganti scheduler ke DDIM untuk potensi hasil yang lebih baik/cepat
-    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-
-    # Apply memory optimizations
-    pipe = setup_memory_efficient_pipeline(pipe)
-
-    print(f"✅ Setup selesai. Model '{model_id}' siap digunakan.")
-    print(f"🖼️ Hasil akan disimpan di: {output_directory}")
-    print("🧠 Memory optimization applied")
-except Exception as e:
-    print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
-
-
-
 ##Cell2
 # @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator (VERSI QC)
 # =======================================================================
@@ -102,58 +9,55 @@ import sys
 from contextlib import contextmanager
 import threading
 import queue
+from cleanlogger import CleanLogger
+from logpresets import PresetManager
+
+#fungsi tambahan
+# 🔁 Reload modul dan ambil class terbarunya
+def reload_logger_modules():
+    import importlib
+    import sys
+    import cleanlogger
+    import logpresets
+
+    importlib.reload(cleanlogger)
+    importlib.reload(logpresets)
+
+    from cleanlogger import CleanLogger
+    from logpresets import PresetManager
+
+    print("✅ Modul 'cleanlogger' dan 'logpresets' berhasil di-reload.")
+    print(f"📦 CleanLogger: {CleanLogger} | ID: {id(CleanLogger)}")
+    print(f"📦 PresetManager: {PresetManager} | ID: {id(PresetManager)}")
+
+    print("\n📁 Status Cache di sys.modules:")
+    print(f" - cleanlogger: {sys.modules.get('cleanlogger')}")
+    print(f" - logpresets: {sys.modules.get('logpresets')}")
+
+    return CleanLogger, PresetManager
+
+# Jalankan reload dan simpan class ke variabel
+#CleanLogger, PresetManager = reload_logger_modules()
+
 
 # =======================================================================
-# BAGIAN 1A: CLEAN LOGGING SYSTEM - NO STDOUT MANIPULATION
+# BAGIAN 1.1: CLEAN LOGGING SYSTEM - NO STDOUT MANIPULATION
 # =======================================================================
 
-from datetime import datetime
+#Dipindahkan ke cleanlogger.py
 
-class CleanLogger:
-    def __init__(self, log_path, output_widget, preset_manager=None):
-        self.log_path = log_path
-        self.output_widget = output_widget
-        self.preset_manager = preset_manager  # Optional, bisa None
-        self.log_file = None
-        self.message_buffer = [] # Atribut ini ada di kode lama, tapi tidak pernah dipakai. Tetap disertakan untuk konsistensi.
-
-    def __enter__(self):
-        self.log_file = open(self.log_path, 'w', encoding='utf-8')
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.log_file:
-            self.log_file.close()
-
-    def log(self, message, show_timestamp=True, custom=None):
-        timestamp = datetime.now().strftime("%H:%M:%S") if show_timestamp else ""
-        log_entry = f"[{timestamp}] {message}" if timestamp else message
-
-        if self.log_file:
-            self.log_file.write(log_entry + '\n')
-            self.log_file.flush()
-
-        # Jika ada custom tag dan preset manager disediakan
-        if custom and self.preset_manager:
-            if self.preset_manager.apply(custom, message, self.output_widget):
-                return  # Sudah ditampilkan oleh preset manager
-
-        # Fallback jika preset tidak tersedia atau tidak ada custom tag
-        with self.output_widget:
-            print(message)
-
-    # DITAMBAHKAN KEMBALI DARI KODE LAMA
-    def log_separator(self):
-        """Log separator line"""
-        separator = "=" * 50
-        # Memanggil metode log yang sudah ada
-        self.log(separator, show_timestamp=False)
 
 # =======================================================================
-# BAGIAN 1B: MEMORY MANAGEMENT & VALIDATION FUNCTIONS
+# BAGIAN 1.2: LOGGING PRESET MANAGER SYSTEM
 # =======================================================================
 
-def validate_batch_size(jobs_list, max_batch=500):
+#Dipindahkan ke logpresets.py
+
+# =======================================================================
+# BAGIAN 1.2: MEMORY MANAGEMENT & VALIDATION FUNCTIONS
+# =======================================================================
+
+def validate_batch_size(jobs_list, max_batch=5):
     """Limit batch size untuk prevent OOM - Conservative untuk Colab Free"""
     if len(jobs_list) > max_batch:
         return jobs_list[:max_batch], f"⚠️ Batch dibatasi ke {max_batch} jobs untuk stabilitas Colab Free"
@@ -181,7 +85,7 @@ def manage_preview_memory_smooth(preview_images, preview_widgets, max_images=3):
     return preview_images, preview_widgets, None
 
 # =======================================================================
-# BAGIAN 1C: FUNGSI INTI (GENERATOR, PARSER, DAN QC LAYER BARU)
+# BAGIAN 1.3: FUNGSI INTI (GENERATOR, PARSER, DAN QC LAYER)
 # =======================================================================
 
 def validate_job_params(job_dict, job_index):
@@ -214,7 +118,7 @@ def parse_batch_json_input(raw_text, logger):
         logger.log(f"❌ ERROR saat parsing JSON: {e}")
         return []
 
-# [FUNGSI BARU] Quality Control Layer
+# Quality Control Layer
 def quality_control_check(jobs_list, model_id, logger):
     """
     Fungsi ini bertindak sebagai Quality Control.
@@ -222,7 +126,7 @@ def quality_control_check(jobs_list, model_id, logger):
     - Menyesuaikan parameter jika memungkinkan (misal: resolusi).
     - Memberikan laporan ringkasan yang jelas.
     """
-    logger.log("🕵️‍♂️ Memulai Quality Control (QC) untuk semua job...")
+    logger.log("🕵️‍♂️ Memulai Quality Control (QC) untuk semua job...",custom="success")
 
     valid_jobs = []
     report_messages = []
@@ -371,7 +275,7 @@ def generate_stable_diffusion_image_clean(
         return None, None, None
 
 # =======================================================================
-# BAGIAN 2: MEMBUAT KOMPONEN UI UNTUK SETIAP MODE (TIDAK BERUBAH)
+# BAGIAN 2.1: MEMBUAT KOMPONEN UI UNTUK SETIAP MODE (TIDAK BERUBAH)
 # =======================================================================
 batch_placeholder_text = """[
   {
@@ -405,12 +309,14 @@ upload_ui = widgets.VBox([widgets.Label('Upload file .json yang berisi array of 
 all_buttons = [batch_button, normal_button, adv_button, upload_generate_button]
 
 # =======================================================================
-# BAGIAN 3: REVISED EXECUTION SYSTEM WITH QC
+# BAGIAN 3.1: EXECUTION SYSTEM
 # =======================================================================
 text_output_area = widgets.Output()
 preview_output_area = widgets.Output()
 preview_images = []
 preview_widgets = []
+
+preset_admin = PresetManager("preset_styles.yaml")
 
 # [REVISI] execute_generation_clean sekarang memanggil QC Layer
 def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
@@ -428,7 +334,11 @@ def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
         log_filename = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         log_path = os.path.join(log_dir, log_filename)
 
-        with CleanLogger(log_path, text_output_area) as logger:
+        with CleanLogger(log_path, text_output_area, preset_manager=preset_admin) as logger:
+            print("DEBUG LOGGER:", logger)
+            print("TYPE LOGGER:", type(logger))
+
+       
             # Panggil QC Layer di sini!
             ready_jobs = quality_control_check(jobs_list, model_id, logger)
 
@@ -499,7 +409,7 @@ def run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, 
                 logger.log(f"   ❌ FATAL ERROR: {e}")
 
         logger.log_separator()
-        logger.log(f"🎉 Generate {mode_name} selesai!")
+        logger.log(f"🎉 Generate {mode_name} selesai!",custom="error")
         logger.log(f"   ✅ Sukses: {successful_jobs}")
         logger.log(f"   ❌ Gagal: {failed_jobs}")
 
@@ -511,8 +421,9 @@ def run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, 
         logger.log(f"❌ Fatal error: {e}")
         emergency_memory_cleanup()
 
+
 # =======================================================================
-# BAGIAN 4: EVENT HANDLERS - CLEANED & SIMPLIFIED
+# BAGIAN 4.1: EVENT HANDLERS - CLEANED & SIMPLIFIED
 # =======================================================================
 
 def on_batch_button_clicked(b):
@@ -564,7 +475,7 @@ adv_button.on_click(on_advanced_button_clicked)
 upload_generate_button.on_click(on_upload_button_clicked)
 
 # =======================================================================
-# BAGIAN 5: UI ASSEMBLY (TIDAK BERUBAH)
+# BAGIAN 5.1: UI ASSEMBLY
 # =======================================================================
 tab_children = [batch_ui, normal_ui, adv_ui, upload_ui]
 tab = widgets.Tab(children=tab_children)
