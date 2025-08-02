@@ -36,4 +36,4 @@ class PresetManager:
         with output_widget:  # ✅ gunakan konteks output widget
             display(widgets.HTML(f"<span style='{html_style}'>{final_message}</span>"), display_id=True)
 
-    return True
+        return True
