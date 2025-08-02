@@ -11,7 +11,7 @@ class CleanLogger:
 
  
     def __enter__(self):
-    self.log_file = open(self.log_path, 'w', encoding='utf-8')
+        self.log_file = open(self.log_path, 'w', encoding='utf-8')
 
 
     def __exit__(self, exc_type, exc_val, exc_tb):
