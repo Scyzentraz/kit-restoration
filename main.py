@@ -376,71 +376,7 @@ def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
             upload_button.value.clear()
             upload_button._counter = 0
 
-# [REVISI] run_execution_loop_clean menjadi lebih sederhana
-
-def run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, logger):
-    # Hapus `preview_images` dari global, tidak dibutuhkan lagi
-    global preview_widgets
-    preview_output_area.clear_output()
-    del preview_widgets[:]
-    gc.collect()
-    try:
-        os.makedirs(f"{output_dir}/images", exist_ok=True)
-        os.makedirs(f"{output_dir}/seeds", exist_ok=True)
-        negative_prompt_default = "blurry, low quality, jpeg artifacts, distorted, watermark, text, signature"
-
-        total_jobs = len(jobs_list)
-        logger.log(f"🚀 Memulai generate {mode_name} - Total: {total_jobs} gambar valid")
-        if preview_enabled: logger.log("   📸 Preview: AKTIF")
-
-        successful_jobs, failed_jobs = 0, 0
-
-    for i, job_config in enumerate(jobs_list):
-        logger.log(f"\n--- Memproses Job Valid {i+1}/{total_jobs} ---")
-
-        if 'negative_prompt' not in job_config:
-            job_config['negative_prompt'] = negative_prompt_default
-        
-        try:
-            # Terima HANYA DUA nilai balik
-            image_path, _ = generate_stable_diffusion_image_clean(
-                model_pipe=pipe, output_dir=output_dir, logger=logger, **job_config
-            )
-
-            if image_path is not None:
-                successful_jobs += 1
-                if preview_enabled:
-                    # Buat thumbnail widget DARI PATH
-                    thumbnail_widget = create_thumbnail_widget(image_path)
-                    if thumbnail_widget:
-                        # Panggil fungsi manajemen (yang nanti juga kita sederhanakan)
-                        preview_widgets, cycle_msg = manage_preview_memory_smooth(preview_widgets, max_images=5) # Naikkan batas preview
-                        if cycle_msg: logger.log(f"   {cycle_msg}")
-
-                        preview_widgets.append(thumbnail_widget)
-                        with preview_output_area:
-                            clear_output(wait=True)
-                            if preview_widgets: display(widgets.HBox(preview_widgets))
-                else:
-                    failed_jobs += 1
-            except Exception as e:
-                failed_jobs += 1
-                logger.log(f"   ❌ FATAL ERROR: {e}")
-
-        logger.log_separator()
-        logger.log(f"🎉 Generate {mode_name} selesai!",custom="error")
-        logger.log(f"   ✅ Sukses: {successful_jobs}")
-        logger.log(f"   ❌ Gagal: {failed_jobs}")
-
-        if total_jobs > 3:
-                safe_memory_cleanup()
-                logger.log("   🧹 Memory cleanup selesai")
-
-    except Exception as e:
-        logger.log(f"❌ Fatal error: {e}")
-        emergency_memory_cleanup()
-
-
+# [REVISI] run_execution_loop_clean
 def run_execution_loop_clean(jobs_list, mode_name, output_dir, preview_enabled, logger):
     # Hapus `preview_images` dari global, tidak dibutuhkan lagi
     global preview_widgets
