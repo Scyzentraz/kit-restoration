@@ -71,19 +71,14 @@ def validate_resolution(width, height):
         return False, f"Resolusi harus kelipatan 8"
     return True, "OK"
 
-def manage_preview_memory_smooth(preview_images, preview_widgets, max_images=3):
-    """Smooth preview management tanpa kedip"""
+def manage_preview_memory_smooth(preview_images, preview_widgets, max_images=5):
     if len(preview_images) >= max_images:
-        if len(preview_images) > 1:
-            preview_images = preview_images[-1:]
-            preview_widgets = preview_widgets[-1:]
-
+        preview_output_area.clear_output(wait=True)
+        del preview_images[:]    
+        del preview_widgets[:]   
         torch.cuda.empty_cache()
-
-        return preview_images, preview_widgets, f"🧹 Preview cycled (showing latest {len(preview_images)} images)"
-
+        return [], [], "🧹 Preview cleared untuk batch baru"
     return preview_images, preview_widgets, None
-
 # =======================================================================
 # BAGIAN 1.3: FUNGSI INTI (GENERATOR, PARSER, DAN QC LAYER)
 # =======================================================================
