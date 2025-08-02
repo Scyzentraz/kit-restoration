@@ -10,7 +10,7 @@ class CleanLogger:
         self.message_buffer = []
 
  
-def __enter__(self):
+    def __enter__(self):
     self.log_file = open(self.log_path, 'w', encoding='utf-8')
 
 
