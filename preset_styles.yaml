@@ -1,0 +1,20 @@
+success:
+  color: "green"
+  font-weight: "bold"
+  emoji: "✅"
+  prefix: "[BERHASIL]"
+  timestamp: true
+
+error:
+  color: "red"
+  font-weight: "bold"
+  emoji: "❌"
+  prefix: "[GAGAL]"
+  timestamp: true
+
+info:
+  color: "blue"
+  font-weight: "normal"
+  emoji: "ℹ️"
+  prefix: "[INFO]"
+  timestamp: true
