@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 class CleanLogger:
     def __init__(self, log_path, output_widget, preset_manager=None):
         self.log_path = log_path
