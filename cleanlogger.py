@@ -11,8 +11,11 @@ class CleanLogger:
 
  
     def __enter__(self):
-        self.log_file = open(self.log_path, 'w', encoding='utf-8')
-
+    self.log_file = open(self.log_path, 'w', encoding='utf-8')
+    if self.output_widget:
+        with self.output_widget:
+            clear_output(wait=True)
+    return self  # ✅ PENTING: supaya 'with ... as logger' tidak menghasilkan None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.log_file:
