@@ -18,20 +18,22 @@ class PresetManager:
             self.presets = {}
 
     def apply(self, tag, message, output_widget):
-        tag = tag.lower()
-        style = self.presets.get(tag)
-        if not style:
-            return False
+    tag = tag.lower()
+    style = self.presets.get(tag)
+    if not style:
+        return False
 
-        color = style.get("color", "black")
-        weight = style.get("font-weight", "normal")
-        emoji = style.get("emoji", "")
-        prefix = style.get("prefix", "")
-        show_time = style.get("timestamp", True)
+    color = style.get("color", "black")
+    weight = style.get("font-weight", "normal")
+    emoji = style.get("emoji", "")
+    prefix = style.get("prefix", "")
+    show_time = style.get("timestamp", True)
 
-        timestamp = f"[{datetime.now().strftime('%H:%M:%S')}]" if show_time else ""
-        final_message = f"{timestamp} {emoji} {prefix} {message}".strip()
-        html_style = f"color:{color}; font-weight:{weight};"
+    timestamp = f"[{datetime.now().strftime('%H:%M:%S')}]" if show_time else ""
+    final_message = f"{timestamp} {emoji} {prefix} {message}".strip()
+    html_style = f"color:{color}; font-weight:{weight};"
 
+    with output_widget:  # ✅ gunakan konteks output widget
         display(widgets.HTML(f"<span style='{html_style}'>{final_message}</span>"), display_id=True)
-        return True
+
+    return True
