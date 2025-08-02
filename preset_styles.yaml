@@ -1,5 +1,5 @@
 success:
-  color: "yellow"
+  color: "blue"
   font-weight: "bold"
   emoji: "✅"
   prefix: "[BERHASIL]"
