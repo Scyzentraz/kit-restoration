@@ -1,3 +1,96 @@
+##Cell1
+# @title ⬅️ Jalankan Cell Ini Dulu Untuk Setup
+# Langkah 1: Install semua kebutuhan
+!pip install diffusers transformers accelerate tqdm
+
+# Langkah 2: Import semua library di satu tempat
+import os
+import torch
+import random
+import json
+import time
+import hashlib
+import diffusers
+import transformers
+import gc
+import io
+from contextlib import redirect_stdout
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+from PIL import Image, PngImagePlugin
+from google.colab import drive
+from datetime import datetime
+from tqdm.notebook import tqdm
+
+# [MODIFIKASI #10] Ganti path hardcoded dengan form Colab
+# Pengguna bisa mengubah path ini sebelum menjalankan cell.
+output_directory = "/content/drive/MyDrive/Stable_diff" #@param {type:"string"}
+
+# Langkah 3: Mount Google Drive
+drive.mount('/content/drive')
+
+# Langkah 4: Konfigurasi dan load model
+model_id = "runwayml/stable-diffusion-v1-5"
+
+# =======================================================================
+# MEMORY OPTIMIZATION FUNCTIONS
+# =======================================================================
+
+def safe_memory_cleanup():
+    """Cleanup memory tanpa menghapus model dari GPU"""
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        cached = torch.cuda.memory_reserved() / 1024**3      # GB
+        print(f"   🧠 GPU Memory - Allocated: {allocated:.2f}GB, Cached: {cached:.2f}GB")
+
+def setup_memory_efficient_pipeline(pipe):
+    """Setup pipeline untuk memory efficiency"""
+    try:
+        pipe.enable_attention_slicing()
+        print("   ✅ Attention slicing enabled")
+    except:
+        print("   ⚠️ Attention slicing not available")
+
+   # try:#dinonaktifkan karena tidak kompatibel di lingkungan colab
+    #    pipe.enable_memory_efficient_attention()
+    #    print("   ✅ Memory efficient attention enabled")
+    #except:
+    #    print("   ⚠️ Memory efficient attention not available")
+
+    return pipe
+
+def emergency_memory_cleanup():
+    """Emergency cleanup jika terjadi OOM error"""
+    print("   🚨 Emergency memory cleanup...")
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    # Force multiple garbage collections
+    for _ in range(3):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    print("   ✅ Emergency cleanup completed")
+
+# Load pipeline dan pindahkan ke GPU
+try:
+    pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
+    # Ganti scheduler ke DDIM untuk potensi hasil yang lebih baik/cepat
+    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+    # Apply memory optimizations
+    pipe = setup_memory_efficient_pipeline(pipe)
+
+    print(f"✅ Setup selesai. Model '{model_id}' siap digunakan.")
+    print(f"🖼️ Hasil akan disimpan di: {output_directory}")
+    print("🧠 Memory optimization applied")
+except Exception as e:
+    print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
+
+
+
 ##Cell2
 # @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator (VERSI QC)
 # =======================================================================
@@ -353,8 +446,6 @@ def execute_generation_clean(jobs_list, mode_name, output_dir, preview_enabled):
         log_path = os.path.join(log_dir, log_filename)
 
         with CleanLogger(log_path, text_output_area, preset_manager=preset_admin) as logger:
-            print("DEBUG LOGGER:", logger)
-            print("TYPE LOGGER:", type(logger))
 
        
             # Panggil QC Layer di sini!
