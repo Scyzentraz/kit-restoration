@@ -1,7 +1,7 @@
 ##Cell1
 # @title ⬅️ Jalankan Cell Ini Dulu Untuk Setup
 # Langkah 1: Install semua kebutuhan
-!pip install diffusers transformers accelerate tqdm
+!pip install diffusers transformers accelerate tqdm bitsandbytes
 
 # Langkah 2: Import semua library di satu tempat
 import os
@@ -75,9 +75,17 @@ def emergency_memory_cleanup():
     print("   ✅ Emergency cleanup completed")
 
 # Load pipeline dan pindahkan ke GPU
+# [MODIFIKASI EXPERT #1] Aktifkan 8-bit quantization
+
 try:
-    pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
-    # Ganti scheduler ke DDIM untuk potensi hasil yang lebih baik/cepat
+
+    pipe = StableDiffusionPipeline.from_pretrained(
+        model_id,
+        load_in_8bit=True, # Ini kuncinya!
+        device_map="auto"  # Biarkan accelerate yang mengatur penempatan device
+    )
+
+   # Ganti scheduler ke DDIM untuk potensi hasil yang lebih baik/cepat
     pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
     # Apply memory optimizations
@@ -85,13 +93,26 @@ try:
 
     print(f"✅ Setup selesai. Model '{model_id}' siap digunakan.")
     print(f"🖼️ Hasil akan disimpan di: {output_directory}")
-    print("🧠 Memory optimization applied")
+    print("🧠 Optimisasi 8-bit & memory efficiency AKTIF")
+
 except Exception as e:
     print(f"❌ Gagal memuat model. Pastikan Anda menggunakan GPU runtime. Error: {e}")
 
 
+#Cell2
+import torch
 
-##Cell2
+# ... setelah pipe berhasil di-load
+try:
+    # [MODIFIKASI EXPERT #2] Terapkan Torch Compile
+    print("🚀 Mencoba mengkompilasi UNet dengan torch.compile()... (mungkin butuh waktu)")
+    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+    print("✅ UNet berhasil dikompilasi!")
+except Exception as e:
+    print(f"⚠️ Gagal mengkompilasi UNet. Melanjutkan tanpa kompilasi. Error: {e}")
+
+
+##Cell3
 # @title ⬅️ Jalankan Cell Ini Untuk Menampilkan Aplikasi Generator (VERSI QC)
 # =======================================================================
 # BAGIAN 0: IMPORT & SETUP UI Lanjutan
