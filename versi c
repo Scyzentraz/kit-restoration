@@ -1,0 +1,353 @@
+# ==============================================================================
+# KOHYA LORA TRAINING - DENGAN RESTART GUIDANCE YANG JELAS
+# Kode asli lo yang udah working, tapi dipecah dengan restart points
+# ==============================================================================
+
+# ==============================================================================
+# PHASE 1A: ENVIRONMENT CHECK & CLEANUP
+# Jalankan ini pertama - DO NOT RESTART after this cell
+# ==============================================================================
+
+print("🔍 PHASE 1A: Environment Check & Cleanup")
+print("=" * 60)
+print("⚠️  DO NOT RESTART after this cell!")
+print("=" * 60)
+
+import os
+import shutil
+import subprocess
+import sys
+
+def run_command(command, check=True):
+    """Jalankan command dengan error handling yang lebih baik"""
+    try:
+        result = subprocess.run(command, shell=True, check=check,
+                              capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Error running command: {command}")
+        print(f"Error: {e.stderr}")
+        if check:
+            raise
+        return e
+
+# Check numpy version first - CRITICAL CHECK
+restart_needed = False
+try:
+    import numpy
+    numpy_version = numpy.__version__
+    if numpy_version.startswith('2.'):
+        print(f"⚠️ WARNING: numpy {numpy_version} detected (need <2.0)")
+        restart_needed = True
+    else:
+        print(f"✅ numpy {numpy_version} (good)")
+except ImportError:
+    print("⚠️ numpy not found - will install correct version")
+
+if restart_needed:
+    print("\n" + "="*60)
+    print("🔄 RESTART REQUIRED!")
+    print("Please restart runtime NOW, then run this cell again")
+    print("="*60)
+    raise Exception("Restart runtime required due to numpy 2.x")
+
+print("🚀 Memulai setup lingkungan...")
+
+# Pindah ke direktori content dan bersihkan jika ada
+os.chdir('/content/')
+if os.path.exists('/content/sd-scripts'):
+    shutil.rmtree('/content/sd-scripts')
+
+# Clone repository
+run_command('git clone https://github.com/kohya-ss/sd-scripts.git')
+os.chdir('/content/sd-scripts/')
+
+print("\n🧹 Membersihkan package yang konflik...")
+
+# Uninstall conflicting packages dulu
+run_command('pip uninstall -y peft torchaudio tensorflow', check=False)
+
+print("✅ Environment cleanup completed!")
+print("\n➡️ IMMEDIATELY run PHASE 1B (DO NOT RESTART)")
+
+
+
+# ==============================================================================
+# PHASE 1B: CORE SYSTEM INSTALLATION
+# Jalankan langsung setelah PHASE 1A - DO NOT RESTART after this cell
+# ==============================================================================
+
+print("🔧 PHASE 1B: Core System Installation")
+print("=" * 60)
+print("⚠️ DO NOT RESTART after this cell!")
+print("=" * 60)
+
+print("🔧 Memasang dependensi inti dengan urutan yang tepat...")
+
+# Install torch dan xformers dulu - FOUNDATION PACKAGES
+print("🔥 Installing PyTorch + torchvision...")
+run_command('pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121')
+
+print("⚡ Installing xformers...")
+run_command('pip install xformers==0.0.26.post1 --index-url https://download.pytorch.org/whl/cu121')
+
+print("✅ Core system installed!")
+print("\n" + "="*60)
+print("🔄 MANDATORY RESTART #1")
+print("REASON: PyTorch & xformers need to be loaded fresh")
+print("ACTION: Restart runtime NOW, then run PHASE 2A")
+print("="*60)
+
+
+# ==============================================================================
+# PHASE 2A: ML STACK INSTALLATION (AFTER RESTART #1)
+# Start here after first mandatory restart
+# ==============================================================================
+
+import os
+import subprocess
+
+def run_command(command, check=True):
+    """Jalankan command dengan error handling yang lebih baik"""
+    try:
+        result = subprocess.run(command, shell=True, check=check,
+                              capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Error running command: {command}")
+        print(f"Error: {e.stderr}")
+        if check:
+            raise
+        return e
+
+
+print("🤖 PHASE 2A: ML Stack Installation (After Restart #1)")
+print("=" * 60)
+print("⚠️ This should be run AFTER restart #1")
+print("⚠️ DO NOT RESTART after this cell!")
+print("=" * 60)
+
+# Verify core dependencies are properly loaded
+try:
+    import torch
+    print(f"✅ PyTorch: {torch.__version__}")
+    if torch.cuda.is_available():
+        print(f"✅ CUDA: {torch.cuda.get_device_name(0)}")
+    else:
+        raise Exception("CUDA not available")
+except ImportError as e:
+    print("❌ Core dependencies not found after restart!")
+    print("Please run PHASE 1A and 1B again, then restart")
+    raise Exception(f"Import error: {e}")
+
+# Make sure we're in the right directory
+os.chdir('/content/sd-scripts/')
+
+print("\n📦 Installing ML stack in correct order...")
+
+# Install dependencies satu per satu untuk kontrol yang lebih baik
+# URUTAN INI PENTING - jangan diubah!
+ml_dependencies = [
+    'accelerate==0.30.0',
+    'transformers==4.44.0',
+    'diffusers[torch]==0.25.0',
+    'bitsandbytes==0.44.0',
+    'safetensors==0.4.2',
+    'huggingface_hub>=0.24.5' # Keep your original version requirement
+]
+
+for dep in ml_dependencies:
+    print(f" Installing {dep}...")
+    result = run_command(f'pip install {dep}')
+    if result.returncode != 0:
+        raise Exception(f"Failed to install {dep}")
+
+print("✅ ML stack installation completed!")
+print("\n➡️ IMMEDIATELY run PHASE 2B (DO NOT RESTART)")
+
+# ==============================================================================
+# PHASE 2B: UTILITIES & KOHYA SETUP
+# Jalankan langsung setelah PHASE 2A - DO NOT RESTART after this cell
+# ==============================================================================
+import subprocess
+import os
+
+print("🛠️ PHASE 2B: Utilities & Kohya Setup")
+print("=" * 60)
+print("⚠️ DO NOT RESTART after this cell!")
+print("=" * 60)
+
+print("📦 Installing utility packages...")
+
+
+def run_command(command, check=True):
+    """Jalankan command dengan error handling yang lebih baik"""
+    try:
+        result = subprocess.run(command, shell=True, check=check,
+                              capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Error running command: {command}")
+        print(f"Error: {e.stderr}")
+        if check:
+            raise
+        return e
+
+# Install utility packages
+utility_dependencies = [
+    'lion-pytorch==0.0.6',
+    'prodigyopt==1.0',
+    'opencv-python==4.8.1.78',
+    'einops==0.7.0',
+    'ftfy==6.1.1',
+    'tensorboard',
+    'rich==13.7.0',
+    'imagesize==1.4.1',
+    'toml==0.10.2',
+    'voluptuous==0.13.1'
+]
+
+for dep in utility_dependencies:
+    print(f" Installing {dep}...")
+    result = run_command(f'pip install {dep}', check=False)
+    if result.returncode != 0:
+        print(f"⚠️ Warning: Failed to install {dep}, continuing...")
+
+os.chdir('/content/sd-scripts/')
+
+# Install package dalam editable mode
+print("\n⚙️ Installing kohya-ss in editable mode...")
+result = run_command('pip install -e .')
+if result.returncode != 0:
+    raise Exception("Kohya-ss installation failed")
+
+print("✅ Utilities & Kohya setup completed!")
+print("\n" + "="*60)
+print("🔄 MANDATORY RESTART #2")
+print("REASON: All ML packages need fresh import for compatibility")
+print("ACTION: Restart runtime NOW, then run PHASE 3A")
+print("="*60)
+
+
+# ==============================================================================
+# PHASE 3A: CONFIGURATION & VALIDATION (AFTER RESTART #2)
+# Start here after second mandatory restart
+# ==============================================================================
+import os
+import subprocess
+import sys
+
+print("⚙️ PHASE 3A: Configuration & Validation (After Restart #2)")
+print("=" * 60)
+print("⚠️ This should be run AFTER restart #2")
+print("⚠️ DO NOT RESTART after this cell!")
+print("=" * 60)
+
+# Make sure we're in the right directory
+os.chdir('/content/sd-scripts/')
+
+# Configure Accelerate
+print("⚙️ Mengkonfigurasi accelerate...")
+
+accelerate_config = """compute_environment: LOCAL_MACHINE
+deepspeed_config: {}
+distributed_type: 'NO'
+downcast_bf16: 'no'
+gpu_ids: all
+machine_rank: 0
+main_training_function: main
+mixed_precision: fp16
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+"""
+
+# Simpan konfigurasi
+os.makedirs(os.path.expanduser('~/.cache/huggingface/accelerate'), exist_ok=True)
+with open(os.path.expanduser('~/.cache/huggingface/accelerate/default_config.yaml'), 'w') as f:
+    f.write(accelerate_config)
+
+print("✅ Accelerate dikonfigurasi")
+
+# Mount Google Drive
+print("\n🔗 Menghubungkan ke Google Drive...")
+try:
+    from google.colab import drive
+    drive.mount('/content/drive')
+    print("✅ Google Drive mounted!")
+except Exception as e:
+    raise Exception(f"Drive mount failed: {e}")
+
+# CRITICAL: Full validation with fresh imports
+print("\n🔍 Validating installation with fresh imports...")
+
+# Test import critical modules
+validation_success = True
+try:
+    import torch
+    import transformers
+    import diffusers
+    import accelerate
+    import huggingface_hub
+    import bitsandbytes
+    import safetensors
+
+    print(f"✅ PyTorch: {torch.__version__}")
+    print(f"✅ Transformers: {transformers.__version__}")
+    print(f"✅ Diffusers: {diffusers.__version__}")
+    print(f"✅ Accelerate: {accelerate.__version__}")
+    print(f"✅ HuggingFace Hub: {huggingface_hub.__version__}")
+    print(f"✅ BitsAndBytes: {bitsandbytes.__version__}")
+    print(f"✅ SafeTensors: {safetensors.__version__}")
+    print(f"✅ CUDA available: {torch.cuda.is_available()}")
+
+    if torch.cuda.is_available():
+        print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
+        print(f"✅ VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    else:
+        print("❌ CUDA not available")
+        validation_success = False
+
+except ImportError as e:
+    print(f"❌ Import error: {e}")
+    validation_success = False
+
+# Test critical functionality that was causing problems
+print("\n🎯 Testing problematic imports...")
+try:
+    from huggingface_hub import cached_download
+    print("✅ huggingface_hub.cached_download: OK")
+except ImportError as e:
+    print(f"❌ huggingface_hub.cached_download: FAILED - {str(e)}")
+    validation_success = False
+
+try:
+    from diffusers import DDPMScheduler
+    print("✅ diffusers.DDPMScheduler: OK")
+except ImportError as e:
+    print(f"❌ diffusers.DDPMScheduler: FAILED - {str(e)}")
+    validation_success = False
+
+if not validation_success:
+    print(f"\n❌ VALIDATION FAILED!")
+    print("TROUBLESHOOTING:")
+    print("1. Restart runtime")
+    print("2. Run PHASE 1A → PHASE 1B → Restart #1")
+    print("3. Run PHASE 2A → PHASE 2B → Restart #2")
+    print("4. Run this PHASE 3A again")
+    raise Exception("Validation failed")
+
+print("\n🎉 VALIDATION SUCCESS!")
+print("All systems operational! Ready for training!")
+print("\n➡️ IMMEDIATELY run PHASE 3B for functions setup")
