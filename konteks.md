@@ -1533,4 +1533,72 @@ LLM tidak perlu tahu bahwa angka-angka itu "adalah warna". Ia hanya perlu belaja
 Ia tidak belajar "melihat" seperti manusia. Ia belajar mengenali dan mengkorelasikan pola matematis visual dengan pola matematis linguistik. Untuk tujuan Anda, pemahaman korelasional ini sudah lebih dari cukup untuk membuatnya menjadi seorang spesialis yang sangat powerful.
 
 
-# dan sekarang saya memberikan full konteks dalam bentuk dokumen md
+
+###konteks terakhir, manifesto final sementara
+### **Manifesto Proyek Rezcty: Arsitektur Final dan Doktrin Operasional (Revisi)**
+
+#### **Bab I: Visi & Tujuan Utama**
+
+**1.1 Visi Utama:**
+Proyek ini bertujuan untuk membangun sebuah ekosistem kreatif semi-otonom yang mampu menghasilkan gambar berkualitas premium. Tujuan akhirnya adalah menciptakan sebuah galeri yang secara konsisten memenuhi standar teknis dan artistik yang ketat dari platform *microstock* komersial.
+
+**1.2 Konsep `rezcty`:**
+Inti dari proyek ini adalah inkarnasi dari sebuah "jiwa" atau estetika visual proprietary yang unik bernama **`rezcty`**. Estetika `rezcty` bukanlah gaya tunggal, melainkan sebuah spektrum visual yang seimbang antara elemen surealis dan fantasi, namun tetap berlandaskan pada komposisi yang kuat dari dunia logis dan kualitas teknis yang tinggi.
+
+#### **Bab II: Arsitektur Sistem Produksi**
+
+Sistem ini dirancang sebagai arsitektur multi-modul yang terdiri dari tiga pilar utama.
+
+**2.1 Pilar Generatif (Mesin Visual):**
+Bertanggung jawab untuk menciptakan visual `rezcty`.
+* [cite_start]**Model Dasar:** Dimulai dengan `runwayml/stable-diffusion-v1-5`[cite: 306, 311].
+* [cite_start]**Kustomisasi Dual LoRA:** Memisahkan `rezcty_style` ("Pelukis Jiwa") yang dilatih pada dataset surealis, dari `rezcty_structure` ("Arsitek Ruang") yang dilatih pada dataset logis[cite: 281, 293, 312].
+* [cite_start]**Modul Pendukung:** Didukung oleh **VAE Kustom** sebagai "lensa akhir" dan *Textual Inversion Embedding* **`rezcty_genius`** sebagai "jembatan semantik" saat inferensi[cite: 282, 295, 491].
+
+**2.2 Pilar Kecerdasan (Otak Sistem):**
+Bertanggung jawab untuk memahami, menganalisis, dan memperkaya konten.
+* [cite_start]**Model Inti:** Menggunakan LLM lokal yang *powerful* (**Llama 3.1 8B**)[cite: 407, 493, 972].
+* **Spesialisasi Ganda:** LLM ini akan di-*fine-tune* menjadi dua "spesialis" dengan tujuan yang sangat berbeda:
+    1.  [cite_start]**"Pembisik Prompt `rezcty`" (Sang Kreator):** Dilatih secara **multimodal** untuk mengembangkan ide prompt sederhana menjadi arahan yang kaya rasa dan selaras dengan estetika visual `rezcty`[cite: 317, 494, 880].
+    2.  [cite_start]**"Analis QC & Metadata" (Sang Inspektur):** Dilatih secara **multimodal** pada dataset gambar komersial umum untuk menganalisis gambar secara objektif sesuai standar *microstock* dan menghasilkan metadata[cite: 305, 306, 495].
+
+#### **Bab III: Doktrin Pelatihan Generatif (LoRA)**
+
+Ini adalah filosofi inti yang digunakan secara spesifik untuk melatih modul di **Pilar Generatif**.
+
+**3.1 Filosofi "Dua Guru":**
+[cite_start]Pelatihan LoRA didasarkan pada filosofi "Dua Guru" untuk memisahkan ajaran konten dari ajaran gaya[cite: 279, 290].
+* [cite_start]**Guru Teks (Caption Objektif):** Caption secara strategis hanya mendeskripsikan konten gambar secara harfiah, menghindari kata-kata yang mendeskripsikan gaya atau emosi[cite: 270, 271, 291].
+* [cite_start]**Guru Piksel (Data Visual):** Gaya visual yang sesungguhnya dipelajari secara murni dari data piksel itu sendiri[cite: 272, 291].
+
+**3.2 Prinsip "Direct Invocation":**
+[cite_start]Untuk menjaga kemurnian konseptual tertinggi, strategi *captioning* yang diadopsi adalah "Direct Invocation" (`konten, trigger_word`)[cite: 301, 489]. [cite_start]Ini memaksa model untuk melakukan abstraksi dan mengasosiasikan *trigger word* dengan "jiwa" artistik, menghindari "kebocoran konseptual" dari frasa seperti "art by"[cite: 489].
+
+#### **Bab IV: Doktrin Pelatihan Kecerdasan (LLM)**
+
+Ini adalah metodologi yang digunakan untuk melatih modul di **Pilar Kecerdasan**.
+
+**4.1 "Mata" Sistem (Vision Encoder):**
+**DINOv2** dipilih sebagai *Vision Encoder* utama. [cite_start]Alasannya adalah kemampuannya yang superior dalam menangkap **detail visual murni, tekstur, dan struktur tanpa "bias bahasa"**[cite: 558, 616, 689, 941]. Ini menyediakan "fakta visual" yang bersih dan objektif yang krusial untuk kedua spesialis LLM.
+
+**4.2 "Jembatan" Multimodal:**
+[cite_start]Dipahami bahwa LLM teks murni tidak bisa langsung memproses *embedding* visual[cite: 729, 830]. [cite_start]Solusinya adalah melalui *fine-tuning* multimodal untuk melatih sebuah **lapisan jembatan (*projection layer*)**[cite: 732, 835, 901, 913]. [cite_start]"Jembatan" ini berfungsi sebagai "Batu Rosetta" yang menerjemahkan "Bahasa Visual DINOv2" ke dalam "Bahasa Teks LLM"[cite: 739, 944].
+
+**4.3 Doktrin Pelatihan Bertahap:**
+Diadopsi strategi pelatihan dua tahap yang bersih, menolak pendekatan campuran untuk menghindari sinyal belajar yang konflik.
+* **Tahap 1: *Pre-training* Fondasi ("Kursus Bahasa Visual"):** Mengajarkan LLM untuk menjadi "penerjemah" visual-ke-teks yang kompeten secara umum, menggunakan dataset `(embedding_DINOv2, "instruksi_generik", "deskripsi_objektif_kaya")`.
+* **Tahap 2: *Fine-tuning* Spesialisasi:** Mengambil LLM yang sudah "melek visual" dan melatihnya lebih lanjut untuk tugas spesifiknya (`rezcty` atau QC) dengan dataset dan tujuan yang berbeda.
+
+#### **Bab V: Alur Kerja & Pemahaman Konseptual**
+
+**5.1 Alur Kerja "Pabrik & Bengkel":**
+[cite_start]Mengadopsi strategi **asinkron** yang memisahkan sesi komputasi untuk efisiensi VRAM maksimal[cite: 335, 352, 498].
+* **"Bengkel":** Sesi terpisah untuk *fine-tuning* setiap komponen. [cite_start]Ini mencakup **pra-komputasi *embedding* DINOv2**[cite: 526, 899].
+* [cite_start]**"Pabrik":** Sesi terpisah untuk setiap tahap produksi (LLM-prompting, SD-generation, LLM-analysis)[cite: 341, 346].
+
+**5.2 Pemahaman Konseptual Inti:**
+Proyek ini berlandaskan pada pemahaman konseptual berikut:
+* [cite_start]**Sifat *Fine-Tuning*:** *Fine-tuning* mengajarkan **generalisasi**, bukan sekadar menghafal, dengan memaksa LLM menemukan pola konsisten di ribuan contoh[cite: 772, 811].
+* **Sifat Ruang *Embedding*:** *Embedding space* DINOv2 adalah **"peta makna" kontinu**, bukan kamus diskrit. [cite_start]LLM yang terlatih mampu **menavigasi dan menginterpolasi** di dalam peta ini[cite: 415].
+* [cite_start]**Parameter vs. Jendela Konteks:** Perbedaan antara pengetahuan terinternalisasi ("Otak") dan memori kerja jangka pendek ("Meja Kerja")[cite: 410, 501].
+* [cite_start]**Kontrol Kreativitas:** Perbedaan antara mengatur **pembelajaran** saat *training* (melalui `LR`, `epochs`) dan mengatur **ekspresi** saat *inference* (melalui `temperature`, `top_p`)[cite: 503, 520].
